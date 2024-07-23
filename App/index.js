@@ -1,102 +1,105 @@
 // Filename: index.js
 // Combined code from all files
 
-import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StyleSheet, View, Text, Button, Alert } from 'react-native';
-import { TouchableWithoutFeedback } from 'react-native-gesture-handler';
+import React, { useState } from 'react';
+import { SafeAreaView, StyleSheet, Text, TextInput, Button, ScrollView, ActivityIndicator, Alert, View } from 'react-native';
+import axios from 'axios';
 
-const CELL_SIZE = 20;
-const WIDTH = 400;
-const HEIGHT = 800;
+const SQUARE_API_URL = 'https://connect.squareup.com/v2'; // Mock URL, replace with actual
+const ACCESS_TOKEN = 'YOUR_SQUARE_ACCESS_TOKEN'; // Replace with your Square access token
 
-const DIRECTIONS = {
-  UP: { x: 0, y: -1 },
-  DOWN: { x: 0, y: 1 },
-  LEFT: { x: -1, y: 0 },
-  RIGHT: { x: 1, y: 0 }
+const fetchAvailableServices = async () => {
+  try {
+    const response = await axios.get(`${SQUARE_API_URL}/catalog/list`, {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    return response.data.objects.filter(item => item.type === 'ITEM');
+  } catch (error) {
+    console.error("Error fetching services:", error);
+    throw error;
+  }
 };
 
-const generateInitialSnake = () => [
-  { x: 6, y: 7 },
-  { x: 5, y: 7 },
-  { x: 4, y: 7 }
-];
-
-const generateRandomFood = (excludePositions) => {
-  let food;
-  while (!food || excludePositions.some(pos => pos.x === food.x && pos.y === food.y)) {
-    food = {
-      x: Math.floor(Math.random() * WIDTH / CELL_SIZE),
-      y: Math.floor(Math.random() * HEIGHT / CELL_SIZE)
-    };
+const createBooking = async (bookingDetails) => {
+  try {
+    const response = await axios.post(`${SQUARE_API_URL}/appointments`, bookingDetails, {
+      headers: {
+        Authorization: `Bearer ${ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    throw error;
   }
-  return food;
 };
 
 export default function App() {
-  const [snake, setSnake] = useState(generateInitialSnake);
-  const [direction, setDirection] = useState(DIRECTIONS.RIGHT);
-  const [food, setFood] = useState(generateRandomFood(snake));
-  const [isGameOver, setIsGameOver] = useState(false);
+  const [services, setServices] = useState([]);
+  const [selectedService, setSelectedService] = useState(null);
+  const [bookingDetails, setBookingDetails] = useState({ name: '', email: '', service: '' });
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!isGameOver) {
-      const intervalID = setInterval(moveSnake, 200);
-      return () => clearInterval(intervalID);
-    }
-  }, [snake, direction, isGameOver]);
+  useState(() => {
+    setLoading(true);
+    fetchAvailableServices()
+      .then(data => setServices(data))
+      .catch(error => Alert.alert("Error loading services"))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const moveSnake = () => {
-    const snakeCopy = [...snake];
-    const head = { ...snake[0], x: snake[0].x + direction.x, y: snake[0].y + direction.y };
-    
-    if (snakeCopy.some(cell => cell.x === head.x && cell.y === head.y) ||
-        head.x < 0 || head.x >= WIDTH / CELL_SIZE || head.y < 0 || head.y >= HEIGHT / CELL_SIZE) {
-      setIsGameOver(true);
-      Alert.alert('Game Over', 'You lost!');
+  const handleBooking = () => {
+    if (!bookingDetails.name || !bookingDetails.email || !selectedService) {
+      Alert.alert("Please fill all details");
       return;
     }
 
-    snakeCopy.unshift(head);
-    if (head.x === food.x && head.y === food.y) {
-      setFood(generateRandomFood(snakeCopy));
-    } else {
-      snakeCopy.pop();
-    }
-    setSnake(snakeCopy);
-  };
-
-  const handleTap = (dx, dy) => {
-    if (!isGameOver) {
-      const newDirection = { x: dx, y: dy };
-      if (-newDirection.x !== direction.x && -newDirection.y !== direction.y) {
-        setDirection(newDirection);
-      }
-    }
-  };
-
-  const resetGame = () => {
-    setSnake(generateInitialSnake);
-    setDirection(DIRECTIONS.RIGHT);
-    setFood(generateRandomFood(generateInitialSnake()));
-    setIsGameOver(false);
+    setLoading(true);
+    createBooking({ ...bookingDetails, service: selectedService })
+      .then(() => Alert.alert("Booking created successfully"))
+      .catch(error => Alert.alert("Error creating booking"))
+      .finally(() => setLoading(false));
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableWithoutFeedback onPress={() => handleTap(-1, 0)} style={styles.leftHalf}>
-        <View />
-      </TouchableWithoutFeedback>
-      <TouchableWithoutFeedback onPress={() => handleTap(1, 0)} style={styles.rightHalf}>
-        <View />
-      </TouchableWithoutFeedback>
-      <View style={styles.board}>
-        {snake.map((cell, index) => (
-          <View key={index} style={[styles.snakeCell, { top: cell.y * CELL_SIZE, left: cell.x * CELL_SIZE }]} />
-        ))}
-        <View style={[styles.foodCell, { top: food.y * CELL_SIZE, left: food.x * CELL_SIZE }]} />
-      </View>
-      {isGameOver && <Button title="Restart" onPress={resetGame} />}
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Book a Service</Text>
+        {loading && <ActivityIndicator size="large" />}
+
+        {!loading && (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Name"
+              value={bookingDetails.name}
+              onChangeText={(text) => setBookingDetails({ ...bookingDetails, name: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={bookingDetails.email}
+              onChangeText={(text) => setBookingDetails({ ...bookingDetails, email: text })}
+            />
+
+            <Text style={styles.label}>Select a Service:</Text>
+            {services.map(service => (
+              <Button
+                key={service.id}
+                title={service.item_data.name}
+                onPress={() => setSelectedService(service.id)}
+                color={selectedService === service.id ? 'blue' : 'gray'}
+              />
+            ))}
+
+            <Button title="Book Now" onPress={handleBooking} />
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -104,38 +107,28 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+  },
+  scrollContainer: {
+    flexGrow: 1,
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'center',
+    padding: 16,
   },
-  board: {
-    width: WIDTH,
-    height: HEIGHT,
-    backgroundColor: '#000',
-    position: 'relative',
+  title: {
+    fontSize: 24,
+    marginBottom: 16,
   },
-  snakeCell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    backgroundColor: 'green',
-    position: 'absolute',
+  input: {
+    height: 40,
+    borderColor: 'gray',
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingLeft: 8,
+    width: '100%',
   },
-  foodCell: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    backgroundColor: 'red',
-    position: 'absolute',
-  },
-  leftHalf: {
-    position: 'absolute',
-    width: '50%',
-    height: '100%',
-    left: 0,
-  },
-  rightHalf: {
-    position: 'absolute',
-    width: '50%',
-    height: '100%',
-    right: 0,
+  label: {
+    fontSize: 18,
+    marginTop: 12,
   },
 });
